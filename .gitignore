@@ -1,0 +1,13 @@
+node_modules/
+backend/lucca.db
+backend/lucca.db-shm
+backend/lucca.db-wal
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/.env
+.env
+dist/
+.DS_Store
+*.log
+out.txt
+err.txt

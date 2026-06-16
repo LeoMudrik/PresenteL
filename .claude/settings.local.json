@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(cd \"C:\\\\Users\\\\Leo\\\\Desktop\\\\Lucca\\\\backend\"; $proc = Start-Process -FilePath \"node\" -ArgumentList \"--experimental-sqlite src/app.js\" -PassThru -RedirectStandardOutput \"out.txt\" -RedirectStandardError \"err.txt\" -NoNewWindow; Start-Sleep -Seconds 4; Get-Content \"out.txt\",\"err.txt\" -ErrorAction SilentlyContinue; $proc.Kill\\(\\))",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Leo\\\\Desktop\\\\Lucca\" -Recurse -File | Where-Object { $_.FullName -notmatch \"node_modules|\\\\.db$|uploads\" } | Select-Object @{N='Arquivo';E={$_.FullName.Replace\\('C:\\\\Users\\\\Leo\\\\Desktop\\\\Lucca\\\\',''\\)}} | Sort-Object Arquivo)",
+      "PowerShell(New-Item -ItemType File -Path \"C:\\\\Users\\\\Leo\\\\Desktop\\\\Lucca\\\\backend\\\\uploads\\\\.gitkeep\" -Force)"
+    ]
+  }
+}
