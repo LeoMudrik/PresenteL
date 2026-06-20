@@ -7,7 +7,18 @@ const { initDatabase } = require('./database');
 const app = express();
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    const allowed = [
+      process.env.FRONTEND_URL,
+      'http://localhost:5173',
+    ].filter(Boolean);
+    // Permite Vercel previews e qualquer origem configurada
+    if (!origin || allowed.some(o => origin.startsWith(o)) || origin.endsWith('.vercel.app')) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS: origem não permitida'));
+    }
+  },
   credentials: true,
 }));
 
