@@ -1,70 +1,94 @@
-const db = require('../database');
+const { pool } = require('../database');
 const path = require('path');
 const fs = require('fs');
 
-exports.listar = (req, res) => {
-  const presentes = db.prepare('SELECT * FROM presentes ORDER BY nome ASC').all();
-  res.json(presentes);
+exports.listar = async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM presentes ORDER BY nome ASC');
+    res.json(rows);
+  } catch {
+    res.status(500).json({ error: 'Erro ao listar presentes' });
+  }
 };
 
-exports.buscarPorId = (req, res) => {
-  const presente = db.prepare('SELECT * FROM presentes WHERE id = ?').get(req.params.id);
-  if (!presente) return res.status(404).json({ error: 'Presente não encontrado' });
-  res.json(presente);
+exports.buscarPorId = async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM presentes WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Presente não encontrado' });
+    res.json(rows[0]);
+  } catch {
+    res.status(500).json({ error: 'Erro ao buscar presente' });
+  }
 };
 
-exports.criar = (req, res) => {
-  const { nome, descricao, valor, quantidade } = req.body;
-  if (!nome) return res.status(400).json({ error: 'Nome é obrigatório' });
+exports.criar = async (req, res) => {
+  try {
+    const { nome, descricao, valor, quantidade } = req.body;
+    if (!nome) return res.status(400).json({ error: 'Nome é obrigatório' });
 
-  const imagem = req.file ? `/uploads/${req.file.filename}` : '';
-  const result = db.prepare(
-    'INSERT INTO presentes (nome, descricao, valor, quantidade, imagem) VALUES (?, ?, ?, ?, ?)'
-  ).run(nome, descricao || '', parseFloat(valor) || 0, parseInt(quantidade) || 1, imagem);
-
-  res.status(201).json({ message: 'Presente criado', id: result.lastInsertRowid });
+    const imagem = req.file ? `/uploads/${req.file.filename}` : '';
+    const result = await pool.query(
+      'INSERT INTO presentes (nome, descricao, valor, quantidade, imagem) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [nome, descricao || '', parseFloat(valor) || 0, parseInt(quantidade) || 1, imagem]
+    );
+    res.status(201).json({ message: 'Presente criado', id: result.rows[0].id });
+  } catch {
+    res.status(500).json({ error: 'Erro ao criar presente' });
+  }
 };
 
-exports.atualizar = (req, res) => {
-  const { nome, descricao, valor, quantidade } = req.body;
-  const { id } = req.params;
+exports.atualizar = async (req, res) => {
+  try {
+    const { nome, descricao, valor, quantidade } = req.body;
+    const { id } = req.params;
 
-  const presente = db.prepare('SELECT * FROM presentes WHERE id = ?').get(id);
-  if (!presente) return res.status(404).json({ error: 'Presente não encontrado' });
+    const { rows } = await pool.query('SELECT * FROM presentes WHERE id = $1', [id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Presente não encontrado' });
+    const presente = rows[0];
 
-  let imagem = presente.imagem;
-  if (req.file) {
-    if (imagem) {
-      const oldPath = path.join(__dirname, '..', '..', imagem);
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    let imagem = presente.imagem;
+    if (req.file) {
+      if (imagem) {
+        const oldPath = path.join(__dirname, '..', '..', imagem);
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      }
+      imagem = `/uploads/${req.file.filename}`;
     }
-    imagem = `/uploads/${req.file.filename}`;
+
+    await pool.query(
+      'UPDATE presentes SET nome = $1, descricao = $2, valor = $3, quantidade = $4, imagem = $5 WHERE id = $6',
+      [nome || presente.nome, descricao ?? presente.descricao, parseFloat(valor) ?? presente.valor, parseInt(quantidade) ?? presente.quantidade, imagem, id]
+    );
+    res.json({ message: 'Presente atualizado' });
+  } catch {
+    res.status(500).json({ error: 'Erro ao atualizar presente' });
   }
-
-  db.prepare(
-    'UPDATE presentes SET nome = ?, descricao = ?, valor = ?, quantidade = ?, imagem = ? WHERE id = ?'
-  ).run(nome || presente.nome, descricao ?? presente.descricao, parseFloat(valor) ?? presente.valor, parseInt(quantidade) ?? presente.quantidade, imagem, id);
-
-  res.json({ message: 'Presente atualizado' });
 };
 
-exports.excluir = (req, res) => {
-  const presente = db.prepare('SELECT * FROM presentes WHERE id = ?').get(req.params.id);
-  if (!presente) return res.status(404).json({ error: 'Presente não encontrado' });
+exports.excluir = async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM presentes WHERE id = $1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'Presente não encontrado' });
 
-  if (presente.imagem) {
-    const imgPath = path.join(__dirname, '..', '..', presente.imagem);
-    if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+    if (rows[0].imagem) {
+      const imgPath = path.join(__dirname, '..', '..', rows[0].imagem);
+      if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+    }
+
+    await pool.query('DELETE FROM presentes WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Presente excluído' });
+  } catch {
+    res.status(500).json({ error: 'Erro ao excluir presente' });
   }
-
-  db.prepare('DELETE FROM presentes WHERE id = ?').run(req.params.id);
-  res.json({ message: 'Presente excluído' });
 };
 
-exports.atualizarEstoque = (req, res) => {
-  const { quantidade } = req.body;
-  if (quantidade === undefined) return res.status(400).json({ error: 'Quantidade obrigatória' });
-
-  db.prepare('UPDATE presentes SET quantidade = ? WHERE id = ?').run(parseInt(quantidade), req.params.id);
-  res.json({ message: 'Estoque atualizado' });
+exports.atualizarEstoque = async (req, res) => {
+  try {
+    const { quantidade } = req.body;
+    if (quantidade === undefined) return res.status(400).json({ error: 'Quantidade obrigatória' });
+    await pool.query('UPDATE presentes SET quantidade = $1 WHERE id = $2', [parseInt(quantidade), req.params.id]);
+    res.json({ message: 'Estoque atualizado' });
+  } catch {
+    res.status(500).json({ error: 'Erro ao atualizar estoque' });
+  }
 };

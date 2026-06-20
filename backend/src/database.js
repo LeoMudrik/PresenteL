@@ -1,53 +1,62 @@
-const { DatabaseSync } = require('node:sqlite');
+const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
-const path = require('path');
 
-const dbPath = path.join(__dirname, '..', 'lucca.db');
-const db = new DatabaseSync(dbPath);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
+});
 
-db.exec('PRAGMA journal_mode = WAL');
-db.exec('PRAGMA foreign_keys = ON');
-
-function initDatabase() {
-  db.exec(`
+async function initDatabase() {
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS administradores (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       nome TEXT NOT NULL,
       login TEXT UNIQUE NOT NULL,
       senha TEXT NOT NULL,
       email TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
 
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS presentes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       nome TEXT NOT NULL,
-      descricao TEXT,
-      valor REAL NOT NULL DEFAULT 0,
+      descricao TEXT DEFAULT '',
+      valor NUMERIC(10,2) NOT NULL DEFAULT 0,
       quantidade INTEGER NOT NULL DEFAULT 1,
-      imagem TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+      imagem TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
 
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS carrinho (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       usuario TEXT NOT NULL,
-      presente_id INTEGER NOT NULL,
+      presente_id INTEGER NOT NULL REFERENCES presentes(id),
       quantidade INTEGER NOT NULL DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (presente_id) REFERENCES presentes(id)
-    );
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
 
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS pagamentos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       usuario TEXT NOT NULL,
-      valor REAL NOT NULL,
+      valor NUMERIC(10,2) NOT NULL,
       status TEXT DEFAULT 'pendente',
-      qr_code TEXT,
-      itens TEXT,
-      data DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+      qr_code TEXT DEFAULT '',
+      itens TEXT DEFAULT '[]',
+      comprovante TEXT DEFAULT '',
+      data TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
 
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS configuracoes_festa (
       id INTEGER PRIMARY KEY DEFAULT 1,
       local TEXT DEFAULT 'A definir',
@@ -60,26 +69,29 @@ function initDatabase() {
       nome_recebedor TEXT DEFAULT 'Lucca',
       cidade_pix TEXT DEFAULT 'SaoPaulo',
       descricao_pix TEXT DEFAULT 'Presente Lucca'
-    );
+    )
   `);
 
-  const admin = db.prepare('SELECT id FROM administradores WHERE login = ?').get('admin');
-  if (!admin) {
-    const hash = bcrypt.hashSync('admin123', 10);
-    db.prepare('INSERT INTO administradores (nome, login, senha, email) VALUES (?, ?, ?, ?)').run('Administrador', 'admin', hash, 'admin@lucca.com');
+  // Admin padrão
+  const { rows: admins } = await pool.query("SELECT id FROM administradores WHERE login = 'admin'");
+  if (admins.length === 0) {
+    const hash = await bcrypt.hash('admin123', 10);
+    await pool.query(
+      'INSERT INTO administradores (nome, login, senha, email) VALUES ($1, $2, $3, $4)',
+      ['Administrador', 'admin', hash, 'admin@lucca.com']
+    );
   }
 
-  const config = db.prepare('SELECT id FROM configuracoes_festa WHERE id = 1').get();
-  if (!config) {
-    db.prepare('INSERT INTO configuracoes_festa (id) VALUES (1)').run();
+  // Configuração inicial da festa
+  const { rows: config } = await pool.query('SELECT id FROM configuracoes_festa WHERE id = 1');
+  if (config.length === 0) {
+    await pool.query(
+      'INSERT INTO configuracoes_festa (id, chave_pix, nome_recebedor) VALUES (1, $1, $2)',
+      ['+5531997672188', 'Livia']
+    );
   }
 
-  // Migrações incrementais (colunas novas)
-  try { db.exec('ALTER TABLE pagamentos ADD COLUMN comprovante TEXT DEFAULT ""'); } catch (_) {}
-
-  console.log('Banco de dados inicializado!');
+  console.log('Banco de dados Postgres inicializado!');
 }
 
-initDatabase();
-
-module.exports = db;
+module.exports = { pool, initDatabase };
