@@ -1,12 +1,28 @@
 import { useEffect, useState } from 'react'
-import { Gift, Users, DollarSign, ShoppingBag, Download, CheckCircle, Clock, XCircle } from 'lucide-react'
+import { Gift, Users, DollarSign, ShoppingBag, Download, CheckCircle, Clock, XCircle, FileText, Eye } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import api from '../../services/api'
 import Loading from '../../components/Loading'
 import toast from 'react-hot-toast'
 
-const STATUS_COLORS = { confirmado: '#22c55e', pendente: '#f59e0b', cancelado: '#ef4444' }
-const STATUS_ICONS = { confirmado: CheckCircle, pendente: Clock, cancelado: XCircle }
+const STATUS_COLORS = {
+  confirmado: '#22c55e',
+  pendente: '#f59e0b',
+  aguardando_confirmacao: '#3b82f6',
+  cancelado: '#ef4444',
+}
+const STATUS_LABELS = {
+  confirmado: 'Confirmado',
+  pendente: 'Pendente',
+  aguardando_confirmacao: 'Com comprovante',
+  cancelado: 'Cancelado',
+}
+const STATUS_ICONS = {
+  confirmado: CheckCircle,
+  pendente: Clock,
+  aguardando_confirmacao: Clock,
+  cancelado: XCircle,
+}
 
 function MetricCard({ icon: Icon, label, value, color, sub }) {
   return (
@@ -156,6 +172,8 @@ export default function Dashboard() {
                   <th className="text-left py-3 px-2 text-gray-500 font-medium">Convidado</th>
                   <th className="text-left py-3 px-2 text-gray-500 font-medium">Valor</th>
                   <th className="text-left py-3 px-2 text-gray-500 font-medium">Status</th>
+                  <th className="text-left py-3 px-2 text-gray-500 font-medium">Comprovante</th>
+                  <th className="text-left py-3 px-2 text-gray-500 font-medium">Ação</th>
                   <th className="text-left py-3 px-2 text-gray-500 font-medium">Data</th>
                 </tr>
               </thead>
@@ -163,17 +181,51 @@ export default function Dashboard() {
                 {data.ultimosPagamentos.map(p => {
                   const Icon = STATUS_ICONS[p.status] || Clock
                   return (
-                    <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                    <tr key={p.id} className={`border-b border-gray-50 hover:bg-gray-50 transition-colors ${p.status === 'aguardando_confirmacao' ? 'bg-blue-50/40' : ''}`}>
                       <td className="py-3 px-2 font-medium text-gray-800">{p.usuario}</td>
                       <td className="py-3 px-2 font-bold text-primary-700">R$ {parseFloat(p.valor).toFixed(2)}</td>
                       <td className="py-3 px-2">
                         <span className="flex items-center gap-1.5 w-fit px-2.5 py-1 rounded-full text-xs font-semibold"
                           style={{ background: STATUS_COLORS[p.status] + '20', color: STATUS_COLORS[p.status] }}>
                           <Icon size={12} />
-                          {p.status}
+                          {STATUS_LABELS[p.status] || p.status}
                         </span>
                       </td>
-                      <td className="py-3 px-2 text-gray-500">
+                      <td className="py-3 px-2">
+                        {p.comprovante ? (
+                          <a
+                            href={p.comprovante}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1.5 text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            {p.comprovante.match(/\.pdf$/i)
+                              ? <FileText size={14} />
+                              : <Eye size={14} />}
+                            Ver
+                          </a>
+                        ) : (
+                          <span className="text-gray-300 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-2">
+                        {p.status !== 'confirmado' && p.status !== 'cancelado' && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                await api.patch(`/pagamentos/${p.id}/status`, { status: 'confirmado' })
+                                toast.success('Pagamento confirmado!')
+                                const r = await api.get('/relatorios/dashboard')
+                                setData(r.data)
+                              } catch { toast.error('Erro ao confirmar') }
+                            }}
+                            className="text-xs bg-green-100 hover:bg-green-200 text-green-700 font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            ✅ Confirmar
+                          </button>
+                        )}
+                      </td>
+                      <td className="py-3 px-2 text-gray-500 whitespace-nowrap">
                         {new Date(p.data).toLocaleString('pt-BR')}
                       </td>
                     </tr>

@@ -51,11 +51,24 @@ exports.listar = (req, res) => {
 
 exports.atualizarStatus = (req, res) => {
   const { status } = req.body;
-  const validStatus = ['pendente', 'confirmado', 'cancelado'];
+  const validStatus = ['pendente', 'aguardando_confirmacao', 'confirmado', 'cancelado'];
   if (!validStatus.includes(status)) return res.status(400).json({ error: 'Status inválido' });
 
   db.prepare('UPDATE pagamentos SET status = ? WHERE id = ?').run(status, req.params.id);
   res.json({ message: 'Status atualizado' });
+};
+
+exports.uploadComprovante = (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+
+  const { id } = req.params;
+  const pagamento = db.prepare('SELECT id FROM pagamentos WHERE id = ?').get(id);
+  if (!pagamento) return res.status(404).json({ error: 'Pagamento não encontrado' });
+
+  const comprovante = `/uploads/${req.file.filename}`;
+  db.prepare('UPDATE pagamentos SET comprovante = ?, status = ? WHERE id = ?').run(comprovante, 'aguardando_confirmacao', id);
+
+  res.json({ message: 'Comprovante enviado com sucesso!', comprovante });
 };
 
 exports.gerarPixAvulso = async (req, res) => {

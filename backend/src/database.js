@@ -74,6 +74,9 @@ function initDatabase() {
     db.prepare('INSERT INTO configuracoes_festa (id) VALUES (1)').run();
   }
 
+  // Migrações incrementais (colunas novas)
+  try { db.exec('ALTER TABLE pagamentos ADD COLUMN comprovante TEXT DEFAULT ""'); } catch (_) {}
+
   console.log('Banco de dados inicializado!');
 }
 
